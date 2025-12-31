@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Save, Download, Upload, Trash2, AlertCircle } from 'lucide-react';
-import { getSettings, updateSettings, exportData, importData, getTransactions, getParties } from '../utils/storage';
+import { getSettings, updateSettings, exportData, importData, getTransactions, getParties } from '../utils/api';
 import { formatCurrencyFull } from '../utils/helpers';
 
 function SettingsPage({ onSettingsChange }) {
@@ -12,13 +12,21 @@ function SettingsPage({ onSettingsChange }) {
   const [stats, setStats] = useState({ transactions: 0, parties: 0 });
 
   useEffect(() => {
-    const s = getSettings();
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    const [s, txns, partiesList] = await Promise.all([
+      getSettings(),
+      getTransactions(),
+      getParties()
+    ]);
     setSettings(s);
     setStats({
-      transactions: getTransactions().length,
-      parties: getParties().length
+      transactions: txns.length,
+      parties: partiesList.length
     });
-  }, []);
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -28,15 +36,15 @@ function SettingsPage({ onSettingsChange }) {
     }));
   };
 
-  const handleSave = () => {
-    updateSettings(settings);
+  const handleSave = async () => {
+    await updateSettings(settings);
     onSettingsChange?.(settings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleExport = () => {
-    const data = exportData();
+  const handleExport = async () => {
+    const data = await exportData();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

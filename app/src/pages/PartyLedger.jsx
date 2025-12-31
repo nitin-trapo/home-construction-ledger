@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Download, Phone, Printer, FileText } from 'lucide-react';
-import { getParties, getTransactions } from '../utils/storage';
+import { getParties, getTransactions } from '../utils/api';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -15,12 +15,14 @@ function PartyLedger({ partyId, onBack }) {
     }
   }, [partyId]);
 
-  const loadData = () => {
-    const parties = getParties();
+  const loadData = async () => {
+    const [parties, allTransactions] = await Promise.all([
+      getParties(),
+      getTransactions()
+    ]);
     const foundParty = parties.find(p => p.id === partyId);
     setParty(foundParty);
 
-    const allTransactions = getTransactions();
     const partyTxns = allTransactions
       .filter(t => t.partyId === partyId)
       .sort((a, b) => new Date(a.date) - new Date(b.date));

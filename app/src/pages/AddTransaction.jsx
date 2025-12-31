@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Save, UserPlus, X } from 'lucide-react';
-import { getCategories, getParties, saveTransaction, saveParty } from '../utils/storage';
+import { getCategories, getParties, saveTransaction, saveParty } from '../utils/api';
 import { getToday, generateVoucherNo } from '../utils/helpers';
 
 const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Credit'];
@@ -34,9 +34,17 @@ function AddTransaction({ onSuccess }) {
   });
 
   useEffect(() => {
-    setCategories(getCategories());
-    setParties(getParties());
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    const [cats, partiesList] = await Promise.all([
+      getCategories(),
+      getParties()
+    ]);
+    setCategories(cats);
+    setParties(partiesList);
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;

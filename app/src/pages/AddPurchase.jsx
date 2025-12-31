@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Save, UserPlus, X, ShoppingCart } from 'lucide-react';
-import { getCategories, getParties, saveTransaction, saveParty } from '../utils/storage';
+import { Save, UserPlus, X, ShoppingCart, Camera, Image, Trash2 } from 'lucide-react';
+import { getCategories, getParties, saveTransaction, saveParty, saveImage } from '../utils/api';
 import { getToday, generateVoucherNo } from '../utils/helpers';
+import { compressImage } from '../utils/imageStorage';
 
 function AddPurchase({ onSuccess }) {
   const [categories, setCategories] = useState([]);
   const [parties, setParties] = useState([]);
   const [showNewParty, setShowNewParty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [attachedImage, setAttachedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
   const [form, setForm] = useState({
     date: getToday(),
@@ -30,9 +33,17 @@ function AddPurchase({ onSuccess }) {
   });
 
   useEffect(() => {
-    setCategories(getCategories());
-    setParties(getParties());
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    const [cats, partiesList] = await Promise.all([
+      getCategories(),
+      getParties()
+    ]);
+    setCategories(cats);
+    setParties(partiesList);
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -46,21 +57,56 @@ function AddPurchase({ onSuccess }) {
     }
   };
 
-  const handleAddParty = () => {
-    if (!newParty.name.trim()) return;
-
-    const party = saveParty(newParty);
-    setParties([...parties, party]);
-    setForm(prev => ({ 
-      ...prev, 
-      partyId: party.id, 
-      partyName: party.name 
-    }));
-    setNewParty({ name: '', type: 'supplier', phone: '', openingBalance: 0 });
-    setShowNewParty(false);
+  const handleSaveNewParty = async () => {
+    if (!newParty.name) {
+      alert('Please enter party name');
+      return;
+    }
+    try {
+      const party = await saveParty(newParty);
+      if (party && party.id) {
+        setParties([...parties, party]);
+        setForm(prev => ({ 
+          ...prev, 
+          partyId: party.id, 
+          partyName: party.name 
+        }));
+        setNewParty({ name: '', type: 'supplier', phone: '', openingBalance: 0 });
+        setShowNewParty(false);
+      } else {
+        alert('Failed to save party. Please check if server is running.');
+      }
+    } catch (error) {
+      console.error('Error saving party:', error);
+      alert('Error saving party: ' + error.message);
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleImageSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    try {
+      const compressed = await compressImage(file, 1200, 0.7);
+      setAttachedImage(compressed);
+      setImagePreview(compressed);
+    } catch (error) {
+      console.error('Error compressing image:', error);
+      alert('Error processing image');
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setAttachedImage(null);
+    setImagePreview(null);
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!form.amount || !form.description || !form.partyId) {
@@ -85,10 +131,20 @@ function AddPurchase({ onSuccess }) {
       paymentMode: 'Credit',
       reference: form.invoiceNo,
       notes: form.notes,
-      isPaid: false
+      isPaid: false,
+      hasAttachment: !!attachedImage
     };
 
-    saveTransaction(transaction);
+    const savedTxn = await saveTransaction(transaction);
+    
+    // Save image if attached
+    if (attachedImage && savedTxn?.id) {
+      try {
+        await saveImage(savedTxn.id, attachedImage);
+      } catch (error) {
+        console.error('Error saving image:', error);
+      }
+    }
     
     setForm({
       date: getToday(),
@@ -102,6 +158,8 @@ function AddPurchase({ onSuccess }) {
       invoiceNo: '',
       notes: ''
     });
+    setAttachedImage(null);
+    setImagePreview(null);
 
     setSaving(false);
     onSuccess?.();
@@ -226,7 +284,7 @@ function AddPurchase({ onSuccess }) {
                   </div>
                   <button
                     type="button"
-                    onClick={handleAddParty}
+                    onClick={handleSaveNewParty}
                     className="w-full bg-orange-600 text-white py-2 rounded-lg hover:bg-orange-700"
                   >
                     Add Party
@@ -319,6 +377,54 @@ function AddPurchase({ onSuccess }) {
                 placeholder="Additional notes"
               />
             </div>
+          </div>
+
+          {/* Photo Attachment */}
+          <div className="border-2 border-dashed border-gray-200 rounded-lg p-4">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+              📎 Bill/Receipt Photo (Optional)
+            </label>
+            
+            {imagePreview ? (
+              <div className="relative">
+                <img 
+                  src={imagePreview} 
+                  alt="Attached bill" 
+                  className="w-full max-h-48 object-contain rounded-lg bg-gray-100"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-600">
+                  <Camera size={18} />
+                  <span>Take Photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                </label>
+                <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-600">
+                  <Image size={18} />
+                  <span>Gallery</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            )}
           </div>
 
           {/* Submit Button */}

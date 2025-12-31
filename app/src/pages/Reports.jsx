@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { Calendar, TrendingUp, Download, FileText } from 'lucide-react';
-import { getTransactions, getCategories, getStats } from '../utils/storage';
+import { getTransactions, getCategories, getStats } from '../utils/api';
 import { formatCurrency, formatCurrencyFull } from '../utils/helpers';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 
@@ -14,10 +14,19 @@ function Reports({ onNavigate }) {
   const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
-    setTransactions(getTransactions());
-    setCategories(getCategories());
-    setStats(getStats());
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    const [txns, cats, statsData] = await Promise.all([
+      getTransactions(),
+      getCategories(),
+      getStats()
+    ]);
+    setTransactions(txns);
+    setCategories(cats);
+    setStats(statsData);
+  };
 
   // Monthly spending data
   const getMonthlyData = () => {

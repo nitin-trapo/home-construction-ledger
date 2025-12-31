@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Download, FileText, Filter } from 'lucide-react';
-import { getTransactions, getParties, getSettings } from '../utils/storage';
+import { getTransactions, getSettings, getParties } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
@@ -22,10 +22,15 @@ function CompanyLedger({ onBack }) {
     calculateLedger();
   }, [transactions, parties, filter, dateRange]);
 
-  const loadData = () => {
-    setTransactions(getTransactions());
-    setParties(getParties());
-    setSettings(getSettings());
+  const loadData = async () => {
+    const [txns, partiesList, settingsData] = await Promise.all([
+      getTransactions(),
+      getParties(),
+      getSettings()
+    ]);
+    setTransactions(txns);
+    setParties(partiesList);
+    setSettings(settingsData);
   };
 
   const getPartyName = (partyId) => {

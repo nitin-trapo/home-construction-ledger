@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Wallet, Target, Plus, ArrowRight } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { getStats, getTransactions, getCategories, getParties } from '../utils/storage';
+import { getStats, getTransactions, getCategories, getParties } from '../utils/api';
 import { formatCurrency, formatCurrencyFull, formatDateDisplay } from '../utils/helpers';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
@@ -16,11 +16,17 @@ function Dashboard({ onNavigate }) {
     loadData();
   }, []);
 
-  const loadData = () => {
-    setStats(getStats());
-    setRecentTransactions(getTransactions().slice(0, 5));
-    setCategories(getCategories());
-    setParties(getParties());
+  const loadData = async () => {
+    const [statsData, txns, cats, partiesList] = await Promise.all([
+      getStats(),
+      getTransactions(),
+      getCategories(),
+      getParties()
+    ]);
+    setStats(statsData);
+    setRecentTransactions(txns.slice(0, 5));
+    setCategories(cats);
+    setParties(partiesList);
   };
 
   if (!stats) return <div className="text-center py-10">Loading...</div>;

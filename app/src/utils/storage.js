@@ -1,10 +1,19 @@
 // Local Storage Keys
 const STORAGE_KEYS = {
+  PROJECTS: 'rojmel_projects',
+  ACTIVE_PROJECT: 'rojmel_active_project',
   TRANSACTIONS: 'rojmel_transactions',
   PARTIES: 'rojmel_parties',
   CATEGORIES: 'rojmel_categories',
   SETTINGS: 'rojmel_settings'
 };
+
+// Get project-specific key
+function getProjectKey(baseKey) {
+  const activeProject = getActiveProject();
+  if (!activeProject) return baseKey;
+  return `${baseKey}_${activeProject.id}`;
+}
 
 // Default Categories for Construction
 const DEFAULT_CATEGORIES = [
@@ -24,25 +33,142 @@ const DEFAULT_SETTINGS = {
   dateFormat: 'dd-MM-yyyy'
 };
 
-// Initialize default data if not exists
-export function initializeData() {
-  if (!localStorage.getItem(STORAGE_KEYS.CATEGORIES)) {
-    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.SETTINGS)) {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)) {
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify([]));
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.PARTIES)) {
-    localStorage.setItem(STORAGE_KEYS.PARTIES, JSON.stringify([]));
+// ==================== PROJECT MANAGEMENT ====================
+
+// Get all projects
+export function getProjects() {
+  const data = localStorage.getItem(STORAGE_KEYS.PROJECTS);
+  return data ? JSON.parse(data) : [];
+}
+
+// Get active project
+export function getActiveProject() {
+  const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_PROJECT);
+  return data ? JSON.parse(data) : null;
+}
+
+// Set active project
+export function setActiveProject(project) {
+  localStorage.setItem(STORAGE_KEYS.ACTIVE_PROJECT, JSON.stringify(project));
+}
+
+// Create new project
+export function createProject(name, budget = 2500000) {
+  const projects = getProjects();
+  const newProject = {
+    id: `PROJ${Date.now()}`,
+    name: name,
+    budget: budget,
+    createdAt: new Date().toISOString()
+  };
+  projects.push(newProject);
+  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+  
+  // Initialize project-specific data
+  const projectSettings = { ...DEFAULT_SETTINGS, projectName: name, budget: budget };
+  localStorage.setItem(`${STORAGE_KEYS.SETTINGS}_${newProject.id}`, JSON.stringify(projectSettings));
+  localStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${newProject.id}`, JSON.stringify([]));
+  localStorage.setItem(`${STORAGE_KEYS.PARTIES}_${newProject.id}`, JSON.stringify([]));
+  localStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${newProject.id}`, JSON.stringify(DEFAULT_CATEGORIES));
+  
+  return newProject;
+}
+
+// Delete project
+export function deleteProject(projectId) {
+  const projects = getProjects();
+  const filtered = projects.filter(p => p.id !== projectId);
+  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(filtered));
+  
+  // Clean up project data
+  localStorage.removeItem(`${STORAGE_KEYS.SETTINGS}_${projectId}`);
+  localStorage.removeItem(`${STORAGE_KEYS.TRANSACTIONS}_${projectId}`);
+  localStorage.removeItem(`${STORAGE_KEYS.PARTIES}_${projectId}`);
+  localStorage.removeItem(`${STORAGE_KEYS.CATEGORIES}_${projectId}`);
+  
+  // If deleted active project, switch to another or null
+  const active = getActiveProject();
+  if (active?.id === projectId) {
+    if (filtered.length > 0) {
+      setActiveProject(filtered[0]);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_PROJECT);
+    }
   }
 }
 
-// Transactions
+// Update project
+export function updateProject(projectId, updates) {
+  const projects = getProjects();
+  const index = projects.findIndex(p => p.id === projectId);
+  if (index !== -1) {
+    projects[index] = { ...projects[index], ...updates };
+    localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+    
+    // Update active project if it's the one being updated
+    const active = getActiveProject();
+    if (active?.id === projectId) {
+      setActiveProject(projects[index]);
+    }
+  }
+  return projects[index];
+}
+
+// ==================== INITIALIZATION ====================
+
+// Initialize default data if not exists
+export function initializeData() {
+  // Check for existing data (migration from single project)
+  const existingTransactions = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
+  const existingParties = localStorage.getItem(STORAGE_KEYS.PARTIES);
+  const existingSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+  
+  // If no projects exist, create default project
+  let projects = getProjects();
+  if (projects.length === 0) {
+    // Migrate existing data to first project
+    const defaultProject = {
+      id: 'PROJ_DEFAULT',
+      name: existingSettings ? JSON.parse(existingSettings).projectName || 'My Home Construction' : 'My Home Construction',
+      budget: existingSettings ? JSON.parse(existingSettings).budget || 2500000 : 2500000,
+      createdAt: new Date().toISOString()
+    };
+    projects = [defaultProject];
+    localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+    
+    // Migrate existing data to project-specific keys
+    if (existingTransactions) {
+      localStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${defaultProject.id}`, existingTransactions);
+    } else {
+      localStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${defaultProject.id}`, JSON.stringify([]));
+    }
+    
+    if (existingParties) {
+      localStorage.setItem(`${STORAGE_KEYS.PARTIES}_${defaultProject.id}`, existingParties);
+    } else {
+      localStorage.setItem(`${STORAGE_KEYS.PARTIES}_${defaultProject.id}`, JSON.stringify([]));
+    }
+    
+    if (existingSettings) {
+      localStorage.setItem(`${STORAGE_KEYS.SETTINGS}_${defaultProject.id}`, existingSettings);
+    } else {
+      localStorage.setItem(`${STORAGE_KEYS.SETTINGS}_${defaultProject.id}`, JSON.stringify(DEFAULT_SETTINGS));
+    }
+    
+    localStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${defaultProject.id}`, JSON.stringify(DEFAULT_CATEGORIES));
+  }
+  
+  // Set active project if not set
+  if (!getActiveProject() && projects.length > 0) {
+    setActiveProject(projects[0]);
+  }
+}
+
+// ==================== TRANSACTIONS ====================
+
 export function getTransactions() {
-  const data = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
+  const key = getProjectKey(STORAGE_KEYS.TRANSACTIONS);
+  const data = localStorage.getItem(key);
   return data ? JSON.parse(data) : [];
 }
 
@@ -54,7 +180,8 @@ export function saveTransaction(transaction) {
     createdAt: new Date().toISOString()
   };
   transactions.unshift(newTransaction);
-  localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
+  const key = getProjectKey(STORAGE_KEYS.TRANSACTIONS);
+  localStorage.setItem(key, JSON.stringify(transactions));
   
   // Update party balance
   if (transaction.partyId) {
@@ -69,7 +196,8 @@ export function updateTransaction(id, updates) {
   const index = transactions.findIndex(t => t.id === id);
   if (index !== -1) {
     transactions[index] = { ...transactions[index], ...updates };
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
+    const key = getProjectKey(STORAGE_KEYS.TRANSACTIONS);
+    localStorage.setItem(key, JSON.stringify(transactions));
   }
   return transactions[index];
 }
@@ -78,16 +206,19 @@ export function deleteTransaction(id) {
   const transactions = getTransactions();
   const transaction = transactions.find(t => t.id === id);
   const filtered = transactions.filter(t => t.id !== id);
-  localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(filtered));
+  const key = getProjectKey(STORAGE_KEYS.TRANSACTIONS);
+  localStorage.setItem(key, JSON.stringify(filtered));
   
   if (transaction?.partyId) {
     updatePartyBalance(transaction.partyId);
   }
 }
 
-// Parties
+// ==================== PARTIES ====================
+
 export function getParties() {
-  const data = localStorage.getItem(STORAGE_KEYS.PARTIES);
+  const key = getProjectKey(STORAGE_KEYS.PARTIES);
+  const data = localStorage.getItem(key);
   return data ? JSON.parse(data) : [];
 }
 
@@ -105,7 +236,8 @@ export function saveParty(party) {
     createdAt: new Date().toISOString()
   };
   parties.push(newParty);
-  localStorage.setItem(STORAGE_KEYS.PARTIES, JSON.stringify(parties));
+  const key = getProjectKey(STORAGE_KEYS.PARTIES);
+  localStorage.setItem(key, JSON.stringify(parties));
   return newParty;
 }
 
@@ -114,7 +246,8 @@ export function updateParty(id, updates) {
   const index = parties.findIndex(p => p.id === id);
   if (index !== -1) {
     parties[index] = { ...parties[index], ...updates };
-    localStorage.setItem(STORAGE_KEYS.PARTIES, JSON.stringify(parties));
+    const key = getProjectKey(STORAGE_KEYS.PARTIES);
+    localStorage.setItem(key, JSON.stringify(parties));
   }
   return parties[index];
 }
@@ -122,7 +255,8 @@ export function updateParty(id, updates) {
 export function deleteParty(id) {
   const parties = getParties();
   const filtered = parties.filter(p => p.id !== id);
-  localStorage.setItem(STORAGE_KEYS.PARTIES, JSON.stringify(filtered));
+  const key = getProjectKey(STORAGE_KEYS.PARTIES);
+  localStorage.setItem(key, JSON.stringify(filtered));
 }
 
 export function updatePartyBalance(partyId) {
@@ -149,22 +283,42 @@ export function updatePartyBalance(partyId) {
   }
 }
 
-// Categories
+// ==================== CATEGORIES ====================
+
 export function getCategories() {
-  const data = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
+  const key = getProjectKey(STORAGE_KEYS.CATEGORIES);
+  const data = localStorage.getItem(key);
   return data ? JSON.parse(data) : DEFAULT_CATEGORIES;
 }
 
-// Settings
+// ==================== SETTINGS ====================
+
 export function getSettings() {
-  const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+  const key = getProjectKey(STORAGE_KEYS.SETTINGS);
+  const data = localStorage.getItem(key);
   return data ? JSON.parse(data) : DEFAULT_SETTINGS;
 }
 
 export function updateSettings(updates) {
   const settings = getSettings();
   const newSettings = { ...settings, ...updates };
-  localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(newSettings));
+  const key = getProjectKey(STORAGE_KEYS.SETTINGS);
+  localStorage.setItem(key, JSON.stringify(newSettings));
+  
+  // Also update project name in projects list if changed
+  if (updates.projectName) {
+    const active = getActiveProject();
+    if (active) {
+      updateProject(active.id, { name: updates.projectName });
+    }
+  }
+  if (updates.budget !== undefined) {
+    const active = getActiveProject();
+    if (active) {
+      updateProject(active.id, { budget: updates.budget });
+    }
+  }
+  
   return newSettings;
 }
 

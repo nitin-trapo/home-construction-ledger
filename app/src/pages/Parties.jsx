@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { UserPlus, Phone, Trash2, ChevronRight, X, FileText, Edit2 } from 'lucide-react';
-import { getParties, getTransactions, saveParty, deleteParty, updateParty, updatePartyBalance } from '../utils/storage';
+import { getParties, getTransactions, saveParty, deleteParty, updateParty, updatePartyBalance } from '../utils/api';
 import { formatCurrency, formatDateDisplay } from '../utils/helpers';
 
 function Parties({ onNavigate }) {
@@ -24,30 +24,34 @@ function Parties({ onNavigate }) {
     loadData();
   }, []);
 
-  const loadData = () => {
-    setParties(getParties());
-    setTransactions(getTransactions());
+  const loadData = async () => {
+    const [partiesList, txns] = await Promise.all([
+      getParties(),
+      getTransactions()
+    ]);
+    setParties(partiesList);
+    setTransactions(txns);
   };
 
-  const handleAddParty = () => {
+  const handleAddParty = async () => {
     if (!newParty.name.trim()) {
       alert('Party name is required');
       return;
     }
-    saveParty(newParty);
+    await saveParty(newParty);
     setNewParty({ name: '', type: 'supplier', phone: '', address: '', openingBalance: 0 });
     setShowAddModal(false);
     loadData();
   };
 
-  const handleDeleteParty = (id) => {
+  const handleDeleteParty = async (id) => {
     const hasTransactions = transactions.some(t => t.partyId === id);
     if (hasTransactions) {
       alert('Cannot delete party with existing transactions');
       return;
     }
-    if (confirm('Are you sure you want to delete this party?')) {
-      deleteParty(id);
+    if (confirm('Delete this party?')) {
+      await deleteParty(id);
       loadData();
     }
   };
@@ -56,13 +60,13 @@ function Parties({ onNavigate }) {
     return transactions.filter(t => t.partyId === partyId);
   };
 
-  const handleSaveOpeningBalance = () => {
+  const handleSaveOpeningBalance = async () => {
     if (selectedParty) {
-      updateParty(selectedParty.id, { openingBalance: tempOpeningBalance });
-      updatePartyBalance(selectedParty.id);
-      loadData();
+      await updateParty(selectedParty.id, { openingBalance: tempOpeningBalance });
+      await updatePartyBalance(selectedParty.id);
+      await loadData();
       // Update selected party with new data
-      const updatedParties = getParties();
+      const updatedParties = await getParties();
       const updated = updatedParties.find(p => p.id === selectedParty.id);
       setSelectedParty(updated);
       setEditingOpeningBalance(false);

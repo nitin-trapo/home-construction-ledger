@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Download, Trash2, Edit, ChevronDown, ChevronUp } from 'lucide-react';
-import { getTransactions, getCategories, getParties, deleteTransaction } from '../utils/storage';
+import { Search, Filter, Download, Trash2, Edit2, ChevronDown, ChevronUp, X, Save, Paperclip, Image } from 'lucide-react';
+import { getTransactions, getCategories, getParties, deleteTransaction, updateTransaction, updatePartyBalance, getImage, deleteImage } from '../utils/api';
 import { formatCurrency, formatDateDisplay, filterTransactions } from '../utils/helpers';
 
 function Transactions({ onNavigate }) {
@@ -10,6 +10,10 @@ function Transactions({ onNavigate }) {
   const [parties, setParties] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+  const [editingTxn, setEditingTxn] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [viewingImage, setViewingImage] = useState(null);
+  const [loadingImage, setLoadingImage] = useState(false);
 
   const [filters, setFilters] = useState({
     search: '',
@@ -29,17 +33,102 @@ function Transactions({ onNavigate }) {
     setFilteredTxns(filtered);
   }, [transactions, filters]);
 
-  const loadData = () => {
-    setTransactions(getTransactions());
-    setCategories(getCategories());
-    setParties(getParties());
+  const loadData = async () => {
+    const [txns, cats, partiesList] = await Promise.all([
+      getTransactions(),
+      getCategories(),
+      getParties()
+    ]);
+    setTransactions(txns);
+    setCategories(cats);
+    setParties(partiesList);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (confirm('Are you sure you want to delete this transaction?')) {
+      // Delete associated image if exists
+      try {
+        await deleteImage(id);
+      } catch (error) {
+        console.error('Error deleting image:', error);
+      }
       deleteTransaction(id);
       loadData();
     }
+  };
+
+  const handleViewImage = async (txnId) => {
+    setLoadingImage(true);
+    try {
+      const imageData = await getImage(txnId);
+      if (imageData) {
+        setViewingImage(imageData);
+      } else {
+        alert('Image not found');
+      }
+    } catch (error) {
+      console.error('Error loading image:', error);
+      alert('Error loading image');
+    }
+    setLoadingImage(false);
+  };
+
+  const handleEdit = (txn) => {
+    setEditingTxn(txn);
+    setEditForm({
+      date: txn.date,
+      description: txn.description,
+      category: txn.category || '',
+      subCategory: txn.subCategory || '',
+      amount: txn.credit || txn.debit || txn.purchaseAmount || '',
+      paymentMode: txn.paymentMode || 'Cash',
+      reference: txn.reference || '',
+      notes: txn.notes || ''
+    });
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveEdit = () => {
+    if (!editForm.description || !editForm.amount) {
+      alert('Please fill description and amount');
+      return;
+    }
+
+    const updates = {
+      date: editForm.date,
+      description: editForm.description,
+      category: editForm.category,
+      subCategory: editForm.subCategory,
+      paymentMode: editForm.paymentMode,
+      reference: editForm.reference,
+      notes: editForm.notes
+    };
+
+    // Update amount based on transaction type
+    const amount = parseFloat(editForm.amount);
+    if (editingTxn.type === 'purchase') {
+      updates.purchaseAmount = amount;
+    } else if (editingTxn.type === 'payment') {
+      updates.credit = amount;
+    } else if (editingTxn.debit > 0) {
+      updates.debit = amount;
+    } else {
+      updates.credit = amount;
+    }
+
+    updateTransaction(editingTxn.id, updates);
+    
+    // Update party balance if there's a party
+    if (editingTxn.partyId) {
+      updatePartyBalance(editingTxn.partyId);
+    }
+
+    setEditingTxn(null);
+    loadData();
   };
 
   const handleExport = () => {
@@ -215,7 +304,10 @@ function Transactions({ onNavigate }) {
                       {txn.purchaseAmount > 0 && (
                         <p className="font-bold text-orange-500 text-sm sm:text-base">{formatCurrency(txn.purchaseAmount)}</p>
                       )}
-                      <p className="text-xs text-gray-400">{formatDateDisplay(txn.date)}</p>
+                      <div className="flex items-center gap-1">
+                        {txn.hasAttachment && <Paperclip size={12} className="text-purple-500" />}
+                        <p className="text-xs text-gray-400">{formatDateDisplay(txn.date)}</p>
+                      </div>
                     </div>
                     {expandedId === txn.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </div>
@@ -247,15 +339,38 @@ function Transactions({ onNavigate }) {
                         <span className="text-gray-500">Notes:</span> {txn.notes}
                       </p>
                     )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(txn.id);
-                      }}
-                      className="flex items-center gap-1 px-3 py-1.5 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 text-xs sm:text-sm"
-                    >
-                      <Trash2 size={14} /> Delete
-                    </button>
+                    <div className="flex gap-2 flex-wrap">
+                      {txn.hasAttachment && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewImage(txn.id);
+                          }}
+                          disabled={loadingImage}
+                          className="flex items-center gap-1 px-3 py-1.5 text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 text-xs sm:text-sm"
+                        >
+                          <Image size={14} /> {loadingImage ? 'Loading...' : 'View Photo'}
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(txn);
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 text-xs sm:text-sm"
+                      >
+                        <Edit2 size={14} /> Edit
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(txn.id);
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 text-xs sm:text-sm"
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -273,6 +388,183 @@ function Transactions({ onNavigate }) {
           </div>
         )}
       </div>
+
+      {/* Edit Transaction Modal */}
+      {editingTxn && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white">
+              <h3 className="font-bold text-lg">Edit Transaction</h3>
+              <button onClick={() => setEditingTxn(null)} className="text-gray-500 hover:text-gray-700">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Transaction Info */}
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">{editingTxn.partyName}</span> • {editingTxn.voucherNo}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Type: {editingTxn.type === 'purchase' ? '🛒 Purchase' : editingTxn.type === 'payment' ? '💵 Payment' : editingTxn.debit > 0 ? '💰 Income' : '💸 Expense'}
+                </p>
+              </div>
+
+              {/* Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  name="date"
+                  value={editForm.date}
+                  onChange={handleEditChange}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
+                <input
+                  type="number"
+                  name="amount"
+                  value={editForm.amount}
+                  onChange={handleEditChange}
+                  className="w-full px-3 py-2 border-2 border-blue-200 rounded-lg text-lg font-bold focus:ring-2 focus:ring-blue-500"
+                  placeholder="0"
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <input
+                  type="text"
+                  name="description"
+                  value={editForm.description}
+                  onChange={handleEditChange}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Description"
+                />
+              </div>
+
+              {/* Category */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    name="category"
+                    value={editForm.category}
+                    onChange={handleEditChange}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Select --</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub-Category</label>
+                  <select
+                    name="subCategory"
+                    value={editForm.subCategory}
+                    onChange={handleEditChange}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Select --</option>
+                    {categories.find(c => c.id === editForm.category)?.subcategories.map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Payment Mode */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
+                <select
+                  name="paymentMode"
+                  value={editForm.paymentMode}
+                  onChange={handleEditChange}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Credit">Credit</option>
+                </select>
+              </div>
+
+              {/* Reference & Notes */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
+                  <input
+                    type="text"
+                    name="reference"
+                    value={editForm.reference}
+                    onChange={handleEditChange}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="Bill/Receipt No"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                  <input
+                    type="text"
+                    name="notes"
+                    value={editForm.notes}
+                    onChange={handleEditChange}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="Notes"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t flex gap-3">
+              <button
+                onClick={() => setEditingTxn(null)}
+                className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+              >
+                <Save size={16} /> Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Viewer Modal */}
+      {viewingImage && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
+          onClick={() => setViewingImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-full">
+            <button 
+              onClick={() => setViewingImage(null)}
+              className="absolute -top-10 right-0 text-white hover:text-gray-300"
+            >
+              <X size={24} />
+            </button>
+            <img 
+              src={viewingImage} 
+              alt="Bill/Receipt" 
+              className="max-w-full max-h-[80vh] object-contain rounded-lg"
+            />
+            <p className="text-center text-white text-sm mt-2">Tap anywhere to close</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
