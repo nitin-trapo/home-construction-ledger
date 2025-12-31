@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { User, Lock, Eye, EyeOff, LogIn, UserPlus } from 'lucide-react';
+import { getApiBase } from '../utils/api';
 
 function Login({ onLogin }) {
   const [isRegister, setIsRegister] = useState(false);
@@ -30,7 +31,7 @@ function Login({ onLogin }) {
         ? { username: form.username, password: form.password, name: form.name, email: form.email }
         : { username: form.username, password: form.password };
 
-      const res = await fetch(`http://localhost:3001${endpoint}`, {
+      const res = await fetch(`${getApiBase()}${endpoint.replace('/api', '')}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)

@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Users, FolderPlus, UserPlus, Trash2, Edit2, X, Check, Building2, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Search, CheckCircle } from 'lucide-react';
-import { getUsers, createUser, updateUser, deleteUser, getProjects, createProject, assignProjectToUser, removeProjectFromUser, getCurrentUser } from '../utils/api';
-
-const API_BASE = 'http://localhost:3001/api';
+import { getUsers, createUser, updateUser, deleteUser, getProjects, createProject, assignProjectToUser, removeProjectFromUser, getCurrentUser, getApiBase } from '../utils/api';
 
 function AdminPanel({ onNavigate }) {
   const [activeTab, setActiveTab] = useState('users');
@@ -148,7 +146,7 @@ function AdminPanel({ onNavigate }) {
   const loadUserProjects = async (userId) => {
     try {
       const token = localStorage.getItem('rojmel_token');
-      const res = await fetch(`${API_BASE}/users/${userId}/projects`, {
+      const res = await fetch(`${getApiBase()}/users/${userId}/projects`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();

@@ -1,7 +1,12 @@
 // API client for SQLite backend
-const API_BASE = import.meta.env.PROD 
+const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+const API_BASE = isProduction 
   ? '/danev/api' 
   : 'http://localhost:3001/api';
+
+export function getApiBase() {
+  return API_BASE;
+}
 
 // Active project state
 let activeProjectId = null;

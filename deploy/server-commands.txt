@@ -1,0 +1,66 @@
+# ============================================
+# STEP 1: Run these commands ON THE SERVER
+# ============================================
+# Connect via PuTTY using your .ppk key to 159.65.141.91
+
+# Install Node.js, nginx, PM2
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt update
+sudo apt install -y nodejs build-essential python3 nginx git
+sudo npm install -g pm2
+
+# Create app directory
+sudo mkdir -p /var/www/danev
+sudo chown -R $USER:$USER /var/www/danev
+cd /var/www/danev
+
+# Clone the repository
+git clone https://github.com/nitin-trapo/home-construction-ledger.git .
+
+# Install server dependencies
+cd /var/www/danev/server
+npm install
+
+# Build frontend
+cd /var/www/danev/app
+npm install
+NODE_ENV=production npm run build
+
+# Start API server with PM2
+cd /var/www/danev
+pm2 start server/index.js --name rojmel-api --env production
+pm2 save
+sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u $USER --hp /root
+
+# ============================================
+# STEP 2: Configure Nginx
+# ============================================
+sudo nano /etc/nginx/sites-available/default
+
+# Add this INSIDE the server { } block (after the existing location /):
+
+location /danev {
+    alias /var/www/danev/app/dist;
+    index index.html;
+    try_files $uri $uri/ /danev/index.html;
+}
+
+location /danev/api {
+    proxy_pass http://127.0.0.1:3001/api;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_cache_bypass $http_upgrade;
+}
+
+# Save and exit (Ctrl+X, Y, Enter)
+
+# Test and restart nginx
+sudo nginx -t
+sudo systemctl restart nginx
+
+# ============================================
+# DONE! Access at: http://159.65.141.91/danev
+# ============================================
