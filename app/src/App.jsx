@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, Plus, List, Users, BarChart3, Settings, Menu, X, ShoppingCart, Banknote, FolderOpen, ChevronDown, PlusCircle } from 'lucide-react';
+import { Home, Plus, List, Users, BarChart3, Settings, Menu, X, ShoppingCart, Banknote, FolderOpen, ChevronDown, PlusCircle, LogOut, Shield } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import AddTransaction from './pages/AddTransaction';
@@ -10,7 +10,9 @@ import PartyLedger from './pages/PartyLedger';
 import CompanyLedger from './pages/CompanyLedger';
 import Reports from './pages/Reports';
 import SettingsPage from './pages/Settings';
-import { initializeData, getSettings, getProjects, getActiveProject, setActiveProject, createProject } from './utils/api';
+import Login from './pages/Login';
+import AdminPanel from './pages/AdminPanel';
+import { initializeData, getSettings, getProjects, getActiveProject, setActiveProject, createProject, isAuthenticated, getCurrentUser, logout } from './utils/api';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: Home },
@@ -35,9 +37,20 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Auth state
+  const [user, setUser] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    initApp();
+    // Check if already logged in
+    if (isAuthenticated()) {
+      setUser(getCurrentUser());
+      setIsLoggedIn(true);
+      initApp();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -70,6 +83,21 @@ function App() {
   const loadSettings = async () => {
     const s = await getSettings();
     setSettings(s);
+  };
+
+  const handleLogin = (userData, token) => {
+    setUser(userData);
+    setIsLoggedIn(true);
+    initApp();
+  };
+
+  const handleLogout = () => {
+    logout();
+    setUser(null);
+    setIsLoggedIn(false);
+    setProjects([]);
+    setActiveProjectState(null);
+    setCurrentPage('dashboard');
   };
 
   const handleSwitchProject = (project) => {
@@ -129,10 +157,17 @@ function App() {
         return <Reports onNavigate={handleNavigate} />;
       case 'settings':
         return <SettingsPage onSettingsChange={setSettings} />;
+      case 'admin':
+        return <AdminPanel onNavigate={handleNavigate} />;
       default:
         return <Dashboard onNavigate={handleNavigate} />;
     }
   };
+
+  // Show login if not authenticated
+  if (!isLoggedIn) {
+    return <Login onLogin={handleLogin} />;
+  }
 
   // Loading state
   if (loading) {
@@ -233,7 +268,7 @@ function App() {
           </button>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex gap-1">
+          <nav className="hidden md:flex items-center gap-1">
             {NAV_ITEMS.map(item => (
               <button
                 key={item.id}
@@ -248,6 +283,29 @@ function App() {
                 <span className="text-sm font-medium">{item.label}</span>
               </button>
             ))}
+            {/* Admin Panel (superadmin only) */}
+            {user?.role === 'superadmin' && (
+              <button
+                onClick={() => handleNavigate('admin')}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                  currentPage === 'admin' ? 'bg-white text-blue-600' : 'hover:bg-blue-500 text-white'
+                }`}
+              >
+                <Shield size={18} />
+                <span className="text-sm font-medium">Admin</span>
+              </button>
+            )}
+            {/* User info & Logout */}
+            <div className="flex items-center gap-2 ml-2 pl-2 border-l border-blue-400">
+              <span className="text-sm text-blue-100">{user?.name}</span>
+              <button
+                onClick={handleLogout}
+                className="p-2 hover:bg-blue-500 rounded-lg"
+                title="Logout"
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
           </nav>
         </div>
 
@@ -271,6 +329,31 @@ function App() {
                 <span className="font-medium">{item.label}</span>
               </button>
             ))}
+            {/* Admin Panel (superadmin only) */}
+            {user?.role === 'superadmin' && (
+              <button
+                onClick={() => { handleNavigate('admin'); setMobileMenuOpen(false); }}
+                className={`flex items-center gap-3 w-full px-3 py-3 rounded-lg transition-colors ${
+                  currentPage === 'admin' ? 'bg-white text-blue-600' : 'hover:bg-blue-500 text-white'
+                }`}
+              >
+                <Shield size={20} />
+                <span className="font-medium">Admin Panel</span>
+              </button>
+            )}
+            {/* User info & Logout */}
+            <div className="border-t border-blue-500 mt-2 pt-2">
+              <div className="px-3 py-2 text-blue-200 text-sm">
+                Logged in as: <span className="font-medium text-white">{user?.name}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 w-full px-3 py-3 rounded-lg text-red-200 hover:bg-red-500 hover:text-white"
+              >
+                <LogOut size={20} />
+                <span className="font-medium">Logout</span>
+              </button>
+            </div>
           </nav>
         )}
       </header>

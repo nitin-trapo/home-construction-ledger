@@ -1,14 +1,253 @@
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
+import crypto from 'crypto';
 import { db, DEFAULT_CATEGORIES } from './database.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || 'rojmel-secret-key-2024';
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// ==================== AUTH HELPERS ====================
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  const [salt, hash] = stored.split(':');
+  const verifyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return hash === verifyHash;
+}
+
+function generateToken(user) {
+  const payload = { id: user.id, username: user.username, role: user.role };
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const body = Buffer.from(JSON.stringify({ ...payload, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 })).toString('base64url');
+  const signature = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${body}`).digest('base64url');
+  return `${header}.${body}.${signature}`;
+}
+
+function verifyToken(token) {
+  try {
+    const [header, body, signature] = token.split('.');
+    const expectedSig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${body}`).digest('base64url');
+    if (signature !== expectedSig) return null;
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (payload.exp < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// Auth middleware
+function authMiddleware(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+  
+  const user = verifyToken(token);
+  if (!user) return res.status(401).json({ error: 'Invalid or expired token' });
+  
+  req.user = user;
+  next();
+}
+
+function adminOnly(req, res, next) {
+  if (req.user.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+}
+
+// ==================== AUTH ENDPOINTS ====================
+
+// Register (first user becomes superadmin)
+app.post('/api/auth/register', (req, res) => {
+  try {
+    const { username, password, name, email } = req.body;
+    
+    if (!username || !password || !name) {
+      return res.status(400).json({ error: 'Username, password and name are required' });
+    }
+    
+    // Check if user exists
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existing) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+    
+    // First user becomes superadmin
+    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
+    const role = userCount.count === 0 ? 'superadmin' : 'user';
+    
+    const id = `USER${Date.now()}`;
+    const hashedPassword = hashPassword(password);
+    
+    db.prepare(`
+      INSERT INTO users (id, username, email, password, name, role)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, username, email || null, hashedPassword, name, role);
+    
+    const user = db.prepare('SELECT id, username, name, email, role FROM users WHERE id = ?').get(id);
+    const token = generateToken(user);
+    
+    res.json({ user, token });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Login
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    const user = db.prepare('SELECT * FROM users WHERE username = ? AND is_active = 1').get(username);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    
+    if (!verifyPassword(password, user.password)) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    
+    const token = generateToken(user);
+    const { password: _, ...userWithoutPassword } = user;
+    
+    res.json({ user: userWithoutPassword, token });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get current user
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  try {
+    const user = db.prepare('SELECT id, username, name, email, role FROM users WHERE id = ?').get(req.user.id);
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== USER MANAGEMENT (Admin only) ====================
+
+// Get all users
+app.get('/api/users', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const users = db.prepare('SELECT id, username, name, email, role, is_active, created_at FROM users').all();
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create user (admin only)
+app.post('/api/users', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const { username, password, name, email, role = 'user' } = req.body;
+    
+    if (!username || !password || !name) {
+      return res.status(400).json({ error: 'Username, password and name are required' });
+    }
+    
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existing) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+    
+    const id = `USER${Date.now()}`;
+    const hashedPassword = hashPassword(password);
+    
+    db.prepare(`
+      INSERT INTO users (id, username, email, password, name, role)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, username, email || null, hashedPassword, name, role);
+    
+    const user = db.prepare('SELECT id, username, name, email, role, is_active FROM users WHERE id = ?').get(id);
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update user
+app.put('/api/users/:id', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const { name, email, role, is_active } = req.body;
+    
+    db.prepare(`
+      UPDATE users SET name = ?, email = ?, role = ?, is_active = ?
+      WHERE id = ?
+    `).run(name, email, role, is_active ? 1 : 0, req.params.id);
+    
+    const user = db.prepare('SELECT id, username, name, email, role, is_active FROM users WHERE id = ?').get(req.params.id);
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete user
+app.delete('/api/users/:id', authMiddleware, adminOnly, (req, res) => {
+  try {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Cannot delete yourself' });
+    }
+    db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Assign project to user
+app.post('/api/users/:userId/projects/:projectId', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const { role = 'editor' } = req.body;
+    
+    db.prepare(`
+      INSERT OR REPLACE INTO user_projects (user_id, project_id, role)
+      VALUES (?, ?, ?)
+    `).run(req.params.userId, req.params.projectId, role);
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Remove project from user
+app.delete('/api/users/:userId/projects/:projectId', authMiddleware, adminOnly, (req, res) => {
+  try {
+    db.prepare('DELETE FROM user_projects WHERE user_id = ? AND project_id = ?').run(req.params.userId, req.params.projectId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get user's assigned projects
+app.get('/api/users/:userId/projects', authMiddleware, (req, res) => {
+  try {
+    const projects = db.prepare(`
+      SELECT p.*, up.role as user_role 
+      FROM projects p
+      JOIN user_projects up ON p.id = up.project_id
+      WHERE up.user_id = ?
+    `).all(req.params.userId);
+    res.json(projects);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Multer for file uploads
 const storage = multer.memoryStorage();
@@ -16,23 +255,35 @@ const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ==================== PROJECTS ====================
 
-// Get all projects
-app.get('/api/projects', (req, res) => {
+// Get all projects (for superadmin) or user's assigned projects
+app.get('/api/projects', authMiddleware, (req, res) => {
   try {
-    const projects = db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all();
+    let projects;
+    if (req.user.role === 'superadmin') {
+      // Superadmin sees all projects
+      projects = db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all();
+    } else {
+      // Regular users see only assigned projects
+      projects = db.prepare(`
+        SELECT p.* FROM projects p
+        JOIN user_projects up ON p.id = up.project_id
+        WHERE up.user_id = ?
+        ORDER BY p.created_at DESC
+      `).all(req.user.id);
+    }
     res.json(projects);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Create project
-app.post('/api/projects', (req, res) => {
+// Create project (superadmin only)
+app.post('/api/projects', authMiddleware, adminOnly, (req, res) => {
   try {
-    const { name, budget = 2500000 } = req.body;
+    const { name, budget = 2500000, assignToUser } = req.body;
     const id = `PROJ${Date.now()}`;
     
-    db.prepare('INSERT INTO projects (id, name, budget) VALUES (?, ?, ?)').run(id, name, budget);
+    db.prepare('INSERT INTO projects (id, name, budget, created_by) VALUES (?, ?, ?, ?)').run(id, name, budget, req.user.id);
     
     // Initialize default categories for this project
     const insertCategory = db.prepare('INSERT INTO categories (id, project_id, name, icon, subcategories) VALUES (?, ?, ?, ?, ?)');
@@ -43,6 +294,11 @@ app.post('/api/projects', (req, res) => {
     // Initialize settings
     db.prepare('INSERT INTO settings (project_id, budget, project_name) VALUES (?, ?, ?)').run(id, budget, name);
     
+    // If assignToUser specified, assign project to that user
+    if (assignToUser) {
+      db.prepare('INSERT INTO user_projects (user_id, project_id, role) VALUES (?, ?, ?)').run(assignToUser, id, 'editor');
+    }
+    
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
     res.json(project);
   } catch (error) {
@@ -50,8 +306,8 @@ app.post('/api/projects', (req, res) => {
   }
 });
 
-// Delete project
-app.delete('/api/projects/:id', (req, res) => {
+// Delete project (superadmin only)
+app.delete('/api/projects/:id', authMiddleware, adminOnly, (req, res) => {
   try {
     db.prepare('DELETE FROM projects WHERE id = ?').run(req.params.id);
     res.json({ success: true });

@@ -12,12 +12,38 @@ db.pragma('journal_mode = WAL');
 
 // Create tables
 db.exec(`
+  -- Users table
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE,
+    password TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT DEFAULT 'user',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
   -- Projects table
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     budget REAL DEFAULT 2500000,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_by TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+
+  -- User-Project assignments (which users can access which projects)
+  CREATE TABLE IF NOT EXISTS user_projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    role TEXT DEFAULT 'viewer',
+    assigned_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE(user_id, project_id)
   );
 
   -- Parties table
