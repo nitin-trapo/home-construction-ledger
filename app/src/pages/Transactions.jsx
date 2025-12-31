@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, Filter, Download, Trash2, Edit2, ChevronDown, ChevronUp, X, Save, Paperclip, Image } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Search, Filter, Download, Trash2, Edit2, ChevronDown, ChevronUp, X, Save, Paperclip, Image, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTransactions, getCategories, getParties, deleteTransaction, updateTransaction, updatePartyBalance, getImage, deleteImage } from '../utils/api';
 import { formatCurrency, formatDateDisplay, filterTransactions } from '../utils/helpers';
 
@@ -14,6 +14,11 @@ function Transactions({ onNavigate }) {
   const [editForm, setEditForm] = useState({});
   const [viewingImage, setViewingImage] = useState(null);
   const [loadingImage, setLoadingImage] = useState(false);
+
+  // DataTable state
+  const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const [filters, setFilters] = useState({
     search: '',
@@ -31,7 +36,65 @@ function Transactions({ onNavigate }) {
   useEffect(() => {
     const filtered = filterTransactions(transactions, filters);
     setFilteredTxns(filtered);
+    setCurrentPage(1); // Reset to first page when filters change
   }, [transactions, filters]);
+
+  // Sorting logic
+  const sortedTxns = useMemo(() => {
+    const sorted = [...filteredTxns];
+    sorted.sort((a, b) => {
+      let aVal, bVal;
+      
+      switch (sortConfig.key) {
+        case 'date':
+          aVal = new Date(a.date);
+          bVal = new Date(b.date);
+          break;
+        case 'party':
+          aVal = (a.partyName || '').toLowerCase();
+          bVal = (b.partyName || '').toLowerCase();
+          break;
+        case 'amount':
+          aVal = a.credit || a.debit || a.purchaseAmount || 0;
+          bVal = b.credit || b.debit || b.purchaseAmount || 0;
+          break;
+        case 'category':
+          aVal = (a.category || '').toLowerCase();
+          bVal = (b.category || '').toLowerCase();
+          break;
+        case 'voucher':
+          aVal = a.voucherNo || '';
+          bVal = b.voucherNo || '';
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [filteredTxns, sortConfig]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(sortedTxns.length / pageSize);
+  const paginatedTxns = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedTxns.slice(start, start + pageSize);
+  }, [sortedTxns, currentPage, pageSize]);
+
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const SortIcon = ({ columnKey }) => {
+    if (sortConfig.key !== columnKey) return <ArrowUpDown size={14} className="text-gray-400" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp size={14} className="text-blue-600" /> : <ArrowDown size={14} className="text-blue-600" />;
+  };
 
   const loadData = async () => {
     const [txns, cats, partiesList] = await Promise.all([
@@ -75,10 +138,17 @@ function Transactions({ onNavigate }) {
 
   const handleEdit = (txn) => {
     setEditingTxn(txn);
+    // Find matching category (handle case where category might be stored as name)
+    let categoryId = txn.category || '';
+    const matchedCat = categories.find(c => c.id === txn.category || c.name === txn.category);
+    if (matchedCat) {
+      categoryId = matchedCat.id;
+    }
+    
     setEditForm({
-      date: txn.date,
-      description: txn.description,
-      category: txn.category || '',
+      date: txn.date || '',
+      description: txn.description || '',
+      category: categoryId,
       subCategory: txn.subCategory || '',
       amount: txn.credit || txn.debit || txn.purchaseAmount || '',
       paymentMode: txn.paymentMode || 'Cash',
@@ -89,7 +159,13 @@ function Transactions({ onNavigate }) {
 
   const handleEditChange = (e) => {
     const { name, value } = e.target;
-    setEditForm(prev => ({ ...prev, [name]: value }));
+    setEditForm(prev => {
+      // Reset subCategory when category changes
+      if (name === 'category') {
+        return { ...prev, [name]: value, subCategory: '' };
+      }
+      return { ...prev, [name]: value };
+    });
   };
 
   const handleSaveEdit = () => {
@@ -276,105 +352,149 @@ function Transactions({ onNavigate }) {
         </div>
       </div>
 
-      {/* Transactions List */}
+      {/* DataTable Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-white rounded-lg p-3 shadow">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">Show</span>
+          <select
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+            className="px-2 py-1 border rounded text-sm"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+          <span className="text-sm text-gray-600">entries</span>
+        </div>
+        <div className="text-sm text-gray-600">
+          Showing {sortedTxns.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, sortedTxns.length)} of {sortedTxns.length} entries
+        </div>
+      </div>
+
+      {/* Transactions Table */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
-        {filteredTxns.length > 0 ? (
-          <div className="divide-y">
-            {filteredTxns.map(txn => (
-              <div key={txn.id} className="hover:bg-gray-50 active:bg-gray-100">
-                <div 
-                  className="p-3 sm:p-4 flex items-center justify-between cursor-pointer"
-                  onClick={() => setExpandedId(expandedId === txn.id ? null : txn.id)}
-                >
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                    <span className="text-lg sm:text-2xl flex-shrink-0">{getCategoryIcon(txn.category)}</span>
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-800 text-sm sm:text-base truncate">{txn.partyName || 'Cash'}</p>
-                      <p className="text-xs sm:text-sm text-gray-500 truncate">{txn.description}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-                    <div className="text-right">
+        {sortedTxns.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100 border-b">
+                <tr>
+                  <th 
+                    onClick={() => handleSort('date')}
+                    className="px-3 py-3 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-200 select-none"
+                  >
+                    <div className="flex items-center gap-1">Date <SortIcon columnKey="date" /></div>
+                  </th>
+                  <th 
+                    onClick={() => handleSort('voucher')}
+                    className="px-3 py-3 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-200 select-none"
+                  >
+                    <div className="flex items-center gap-1">Voucher <SortIcon columnKey="voucher" /></div>
+                  </th>
+                  <th 
+                    onClick={() => handleSort('party')}
+                    className="px-3 py-3 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-200 select-none"
+                  >
+                    <div className="flex items-center gap-1">Party <SortIcon columnKey="party" /></div>
+                  </th>
+                  <th className="px-3 py-3 text-left font-semibold text-gray-600 hidden md:table-cell">Description</th>
+                  <th 
+                    onClick={() => handleSort('category')}
+                    className="px-3 py-3 text-left font-semibold text-gray-600 hidden sm:table-cell cursor-pointer hover:bg-gray-200 select-none"
+                  >
+                    <div className="flex items-center gap-1">Category <SortIcon columnKey="category" /></div>
+                  </th>
+                  <th 
+                    onClick={() => handleSort('amount')}
+                    className="px-3 py-3 text-right font-semibold text-gray-600 cursor-pointer hover:bg-gray-200 select-none"
+                  >
+                    <div className="flex items-center justify-end gap-1">Amount <SortIcon columnKey="amount" /></div>
+                  </th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-600">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {paginatedTxns.map(txn => (
+                  <tr key={txn.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-3 whitespace-nowrap text-gray-600">
+                      {formatDateDisplay(txn.date)}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">{txn.voucherNo}</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <span>{getCategoryIcon(txn.category)}</span>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-800 truncate max-w-[120px] sm:max-w-[180px]">{txn.partyName || 'Cash'}</p>
+                          <p className="text-xs text-gray-400 truncate max-w-[120px] sm:max-w-[180px] md:hidden">{txn.description}</p>
+                        </div>
+                        {txn.hasAttachment && <Paperclip size={12} className="text-purple-500 flex-shrink-0" />}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 hidden md:table-cell">
+                      <p className="text-gray-600 truncate max-w-[200px]">{txn.description}</p>
+                    </td>
+                    <td className="px-3 py-3 hidden sm:table-cell">
+                      <span className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full whitespace-nowrap">
+                        {txn.category || 'misc'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {txn.purchaseAmount > 0 && (
+                        <span className="font-semibold text-orange-600">{formatCurrency(txn.purchaseAmount)}</span>
+                      )}
                       {txn.credit > 0 && (
-                        <p className="font-bold text-red-500 text-sm sm:text-base">-{formatCurrency(txn.credit)}</p>
+                        <span className="font-semibold text-red-600">-{formatCurrency(txn.credit)}</span>
                       )}
                       {txn.debit > 0 && (
-                        <p className="font-bold text-green-500 text-sm sm:text-base">+{formatCurrency(txn.debit)}</p>
+                        <span className="font-semibold text-green-600">+{formatCurrency(txn.debit)}</span>
                       )}
-                      {txn.purchaseAmount > 0 && (
-                        <p className="font-bold text-orange-500 text-sm sm:text-base">{formatCurrency(txn.purchaseAmount)}</p>
-                      )}
-                      <div className="flex items-center gap-1">
-                        {txn.hasAttachment && <Paperclip size={12} className="text-purple-500" />}
-                        <p className="text-xs text-gray-400">{formatDateDisplay(txn.date)}</p>
-                      </div>
-                    </div>
-                    {expandedId === txn.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </div>
-                </div>
-
-                {/* Expanded Details */}
-                {expandedId === txn.id && (
-                  <div className="px-3 sm:px-4 pb-3 sm:pb-4 bg-gray-50 border-t">
-                    <div className="grid grid-cols-2 gap-2 sm:gap-4 py-2 sm:py-3 text-xs sm:text-sm">
-                      <div>
-                        <span className="text-gray-500">Voucher:</span>
-                        <p className="font-medium">{txn.voucherNo}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Category:</span>
-                        <p className="font-medium truncate">{txn.category}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Payment:</span>
-                        <p className="font-medium">{txn.paymentMode}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Reference:</span>
-                        <p className="font-medium truncate">{txn.reference || '-'}</p>
-                      </div>
-                    </div>
-                    {txn.notes && (
-                      <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
-                        <span className="text-gray-500">Notes:</span> {txn.notes}
-                      </p>
-                    )}
-                    <div className="flex gap-2 flex-wrap">
-                      {txn.hasAttachment && (
+                      <p className="text-xs text-gray-400">{txn.paymentMode}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-center gap-1">
+                        {txn.hasAttachment && (
+                          <button
+                            onClick={() => handleViewImage(txn.id)}
+                            disabled={loadingImage}
+                            className="p-1.5 text-purple-600 hover:bg-purple-50 rounded"
+                            title="View Photo"
+                          >
+                            <Image size={16} />
+                          </button>
+                        )}
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleViewImage(txn.id);
-                          }}
-                          disabled={loadingImage}
-                          className="flex items-center gap-1 px-3 py-1.5 text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 text-xs sm:text-sm"
+                          onClick={() => handleEdit(txn)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                          title="Edit"
                         >
-                          <Image size={14} /> {loadingImage ? 'Loading...' : 'View Photo'}
+                          <Edit2 size={16} />
                         </button>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEdit(txn);
-                        }}
-                        className="flex items-center gap-1 px-3 py-1.5 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 text-xs sm:text-sm"
-                      >
-                        <Edit2 size={14} /> Edit
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(txn.id);
-                        }}
-                        className="flex items-center gap-1 px-3 py-1.5 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 text-xs sm:text-sm"
-                      >
-                        <Trash2 size={14} /> Delete
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                        <button
+                          onClick={() => handleDelete(txn.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                          title="Delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50 border-t font-semibold">
+                <tr>
+                  <td colSpan="5" className="px-3 py-3 text-right text-gray-600">Total:</td>
+                  <td className="px-3 py-3 text-right">
+                    <p className="text-green-600">+{formatCurrency(totals.debit)}</p>
+                    <p className="text-red-600">-{formatCurrency(totals.credit)}</p>
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         ) : (
           <div className="text-center py-8 sm:py-12 text-gray-400">
@@ -388,6 +508,71 @@ function Transactions({ onNavigate }) {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-white rounded-lg p-3 shadow">
+          <div className="text-sm text-gray-600">
+            Page {currentPage} of {totalPages}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="px-2 py-1 border rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              First
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="p-1 border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            {/* Page numbers */}
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`px-3 py-1 border rounded text-sm ${
+                    currentPage === pageNum
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="p-1 border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight size={18} />
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 border rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Last
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Edit Transaction Modal */}
       {editingTxn && (
@@ -474,7 +659,7 @@ function Transactions({ onNavigate }) {
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">-- Select --</option>
-                    {categories.find(c => c.id === editForm.category)?.subcategories.map(sub => (
+                    {(categories.find(c => c.id === editForm.category)?.subcategories || []).map(sub => (
                       <option key={sub} value={sub}>{sub}</option>
                     ))}
                   </select>

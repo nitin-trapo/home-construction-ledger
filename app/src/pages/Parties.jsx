@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { UserPlus, Phone, Trash2, ChevronRight, X, FileText, Edit2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { UserPlus, Phone, Trash2, ChevronRight, X, FileText, Edit2, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, Search } from 'lucide-react';
 import { getParties, getTransactions, saveParty, deleteParty, updateParty, updatePartyBalance } from '../utils/api';
 import { formatCurrency, formatDateDisplay } from '../utils/helpers';
 
@@ -9,6 +9,12 @@ function Parties({ onNavigate }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedParty, setSelectedParty] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // DataTable state
+  const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const [newParty, setNewParty] = useState({
     name: '',
@@ -73,12 +79,79 @@ function Parties({ onNavigate }) {
     }
   };
 
-  const filteredParties = parties.filter(p => {
-    if (filter === 'all') return true;
-    if (filter === 'owing') return p.currentBalance < 0;
-    if (filter === 'owed') return p.currentBalance > 0;
-    return p.type === filter;
-  });
+  const filteredParties = useMemo(() => {
+    let filtered = parties.filter(p => {
+      if (filter === 'all') return true;
+      if (filter === 'owing') return p.currentBalance < 0;
+      if (filter === 'owed') return p.currentBalance > 0;
+      return p.type === filter;
+    });
+    
+    // Apply search
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(p => 
+        p.name.toLowerCase().includes(search) ||
+        p.phone?.toLowerCase().includes(search) ||
+        p.type?.toLowerCase().includes(search)
+      );
+    }
+    
+    return filtered;
+  }, [parties, filter, searchTerm]);
+
+  // Sorting logic
+  const sortedParties = useMemo(() => {
+    const sorted = [...filteredParties];
+    sorted.sort((a, b) => {
+      let aVal, bVal;
+      
+      switch (sortConfig.key) {
+        case 'name':
+          aVal = (a.name || '').toLowerCase();
+          bVal = (b.name || '').toLowerCase();
+          break;
+        case 'type':
+          aVal = (a.type || '').toLowerCase();
+          bVal = (b.type || '').toLowerCase();
+          break;
+        case 'balance':
+          aVal = a.currentBalance || 0;
+          bVal = b.currentBalance || 0;
+          break;
+        case 'phone':
+          aVal = a.phone || '';
+          bVal = b.phone || '';
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [filteredParties, sortConfig]);
+
+  // Pagination
+  const totalPages = Math.ceil(sortedParties.length / pageSize);
+  const paginatedParties = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedParties.slice(start, start + pageSize);
+  }, [sortedParties, currentPage, pageSize]);
+
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const SortIcon = ({ columnKey }) => {
+    if (sortConfig.key !== columnKey) return <ArrowUpDown size={14} className="text-gray-400" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp size={14} className="text-blue-600" /> : <ArrowDown size={14} className="text-blue-600" />;
+  };
 
   const getTypeColor = (type) => {
     const colors = {
@@ -104,6 +177,18 @@ function Parties({ onNavigate }) {
         </button>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+        <input
+          type="text"
+          placeholder="Search parties..."
+          value={searchTerm}
+          onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+          className="w-full pl-10 pr-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 text-sm"
+        />
+      </div>
+
       {/* Filters */}
       <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-2 -mx-1 px-1">
         {[
@@ -116,7 +201,7 @@ function Parties({ onNavigate }) {
         ].map(f => (
           <button
             key={f.id}
-            onClick={() => setFilter(f.id)}
+            onClick={() => { setFilter(f.id); setCurrentPage(1); }}
             className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg whitespace-nowrap text-xs sm:text-sm ${
               filter === f.id 
                 ? 'bg-blue-600 text-white' 
@@ -144,47 +229,117 @@ function Parties({ onNavigate }) {
         </div>
       </div>
 
-      {/* Parties List */}
+      {/* DataTable Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-white rounded-lg p-3 shadow">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">Show</span>
+          <select
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+            className="px-2 py-1 border rounded text-sm"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+          <span className="text-sm text-gray-600">entries</span>
+        </div>
+        <div className="text-sm text-gray-600">
+          Showing {sortedParties.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, sortedParties.length)} of {sortedParties.length} entries
+        </div>
+      </div>
+
+      {/* Parties Table */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
-        {filteredParties.length > 0 ? (
-          <div className="divide-y">
-            {filteredParties.map(party => (
-              <div 
-                key={party.id}
-                className="p-3 sm:p-4 hover:bg-gray-50 active:bg-gray-100 cursor-pointer flex items-center justify-between"
-                onClick={() => setSelectedParty(party)}
-              >
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm sm:text-lg font-bold text-gray-600 flex-shrink-0">
-                    {party.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-800 text-sm sm:text-base truncate">{party.name}</p>
-                    <div className="flex items-center gap-1 sm:gap-2">
-                      <span className={`text-xs px-1.5 sm:px-2 py-0.5 rounded-full ${getTypeColor(party.type)}`}>
+        {sortedParties.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100 border-b">
+                <tr>
+                  <th 
+                    onClick={() => handleSort('name')}
+                    className="px-3 py-3 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-200 select-none"
+                  >
+                    <div className="flex items-center gap-1">Party Name <SortIcon columnKey="name" /></div>
+                  </th>
+                  <th 
+                    onClick={() => handleSort('type')}
+                    className="px-3 py-3 text-left font-semibold text-gray-600 cursor-pointer hover:bg-gray-200 select-none"
+                  >
+                    <div className="flex items-center gap-1">Type <SortIcon columnKey="type" /></div>
+                  </th>
+                  <th 
+                    onClick={() => handleSort('phone')}
+                    className="px-3 py-3 text-left font-semibold text-gray-600 hidden sm:table-cell cursor-pointer hover:bg-gray-200 select-none"
+                  >
+                    <div className="flex items-center gap-1">Phone <SortIcon columnKey="phone" /></div>
+                  </th>
+                  <th 
+                    onClick={() => handleSort('balance')}
+                    className="px-3 py-3 text-right font-semibold text-gray-600 cursor-pointer hover:bg-gray-200 select-none"
+                  >
+                    <div className="flex items-center justify-end gap-1">Balance <SortIcon columnKey="balance" /></div>
+                  </th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-600">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {paginatedParties.map(party => (
+                  <tr key={party.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-bold text-gray-600 flex-shrink-0">
+                          {party.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-medium text-gray-800">{party.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`text-xs px-2 py-1 rounded-full ${getTypeColor(party.type)}`}>
                         {party.type}
                       </span>
-                      {party.phone && (
-                        <span className="text-xs text-gray-500 hidden sm:flex items-center gap-1">
-                          <Phone size={12} /> {party.phone}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                  <div className="text-right">
-                    <p className={`font-bold text-sm sm:text-base ${party.currentBalance < 0 ? 'text-red-500' : party.currentBalance > 0 ? 'text-green-500' : 'text-gray-500'}`}>
-                      {formatCurrency(party.currentBalance)}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {party.currentBalance < 0 ? 'We owe' : party.currentBalance > 0 ? 'They owe' : 'Settled'}
-                    </p>
-                  </div>
-                  <ChevronRight size={16} className="text-gray-400" />
-                </div>
-              </div>
-            ))}
+                    </td>
+                    <td className="px-3 py-3 hidden sm:table-cell text-gray-600">
+                      {party.phone || '-'}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <p className={`font-semibold ${party.currentBalance < 0 ? 'text-red-600' : party.currentBalance > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                        {formatCurrency(Math.abs(party.currentBalance))}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {party.currentBalance < 0 ? 'We owe' : party.currentBalance > 0 ? 'They owe' : 'Settled'}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => setSelectedParty(party)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                          title="View Details"
+                        >
+                          <FileText size={16} />
+                        </button>
+                        <button
+                          onClick={() => onNavigate('partyLedger', { partyId: party.id })}
+                          className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                          title="View Ledger"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteParty(party.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                          title="Delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div className="text-center py-8 sm:py-12 text-gray-400">
@@ -198,6 +353,70 @@ function Parties({ onNavigate }) {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-white rounded-lg p-3 shadow">
+          <div className="text-sm text-gray-600">
+            Page {currentPage} of {totalPages}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="px-2 py-1 border rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              First
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="p-1 border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`px-3 py-1 border rounded text-sm ${
+                    currentPage === pageNum
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="p-1 border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight size={18} />
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 border rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Last
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Add Party Modal */}
       {showAddModal && (

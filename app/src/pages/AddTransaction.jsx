@@ -58,18 +58,30 @@ function AddTransaction({ onSuccess }) {
     }
   };
 
-  const handleAddParty = () => {
-    if (!newParty.name.trim()) return;
+  const handleAddParty = async () => {
+    if (!newParty.name.trim()) {
+      alert('Please enter party name');
+      return;
+    }
 
-    const party = saveParty(newParty);
-    setParties([...parties, party]);
-    setForm(prev => ({ 
-      ...prev, 
-      partyId: party.id, 
-      partyName: party.name 
-    }));
-    setNewParty({ name: '', type: 'supplier', phone: '', openingBalance: 0 });
-    setShowNewParty(false);
+    try {
+      const party = await saveParty(newParty);
+      if (party && party.id) {
+        setParties([...parties, party]);
+        setForm(prev => ({ 
+          ...prev, 
+          partyId: party.id, 
+          partyName: party.name 
+        }));
+        setNewParty({ name: '', type: 'supplier', phone: '', openingBalance: 0 });
+        setShowNewParty(false);
+      } else {
+        alert('Failed to save party. Please check if server is running.');
+      }
+    } catch (error) {
+      console.error('Error saving party:', error);
+      alert('Error saving party: ' + error.message);
+    }
   };
 
   const handleSubmit = (e) => {
