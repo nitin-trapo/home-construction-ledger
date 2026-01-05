@@ -136,31 +136,31 @@ function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <Dashboard onNavigate={handleNavigate} />;
+        return <Dashboard onNavigate={handleNavigate} refreshKey={refreshKey} />;
       case 'add':
         return <EntrySelector onNavigate={handleNavigate} />;
       case 'purchase':
-        return <AddPurchase onSuccess={() => handleNavigate('transactions')} />;
+        return <AddPurchase onSuccess={() => handleNavigate('transactions')} refreshKey={refreshKey} />;
       case 'payment':
-        return <AddPayment onSuccess={() => handleNavigate('transactions')} />;
+        return <AddPayment onSuccess={() => handleNavigate('transactions')} refreshKey={refreshKey} />;
       case 'income':
-        return <AddTransaction onSuccess={() => handleNavigate('transactions')} />;
+        return <AddTransaction onSuccess={() => handleNavigate('transactions')} refreshKey={refreshKey} />;
       case 'transactions':
-        return <Transactions onNavigate={handleNavigate} />;
+        return <Transactions onNavigate={handleNavigate} refreshKey={refreshKey} />;
       case 'parties':
-        return <Parties onNavigate={handleNavigate} />;
+        return <Parties onNavigate={handleNavigate} refreshKey={refreshKey} />;
       case 'partyLedger':
-        return <PartyLedger partyId={selectedPartyId} onBack={() => handleNavigate('parties')} />;
+        return <PartyLedger partyId={selectedPartyId} onBack={() => handleNavigate('parties')} refreshKey={refreshKey} />;
       case 'companyLedger':
-        return <CompanyLedger onBack={() => handleNavigate('reports')} />;
+        return <CompanyLedger onBack={() => handleNavigate('reports')} refreshKey={refreshKey} />;
       case 'reports':
-        return <Reports onNavigate={handleNavigate} />;
+        return <Reports onNavigate={handleNavigate} refreshKey={refreshKey} />;
       case 'settings':
-        return <SettingsPage onSettingsChange={setSettings} />;
+        return <SettingsPage onSettingsChange={setSettings} refreshKey={refreshKey} />;
       case 'admin':
         return <AdminPanel onNavigate={handleNavigate} />;
       default:
-        return <Dashboard onNavigate={handleNavigate} />;
+        return <Dashboard onNavigate={handleNavigate} refreshKey={refreshKey} />;
     }
   };
 

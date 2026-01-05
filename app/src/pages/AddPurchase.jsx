@@ -4,7 +4,7 @@ import { getCategories, getParties, saveTransaction, saveParty, saveImage } from
 import { getToday, generateVoucherNo } from '../utils/helpers';
 import { compressImage } from '../utils/imageStorage';
 
-function AddPurchase({ onSuccess }) {
+function AddPurchase({ onSuccess, refreshKey }) {
   const [categories, setCategories] = useState([]);
   const [parties, setParties] = useState([]);
   const [showNewParty, setShowNewParty] = useState(false);
@@ -34,7 +34,7 @@ function AddPurchase({ onSuccess }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   const loadData = async () => {
     const [cats, partiesList] = await Promise.all([

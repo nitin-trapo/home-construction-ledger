@@ -5,7 +5,7 @@ import { getToday, generateVoucherNo } from '../utils/helpers';
 
 const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Credit'];
 
-function AddTransaction({ onSuccess }) {
+function AddTransaction({ onSuccess, refreshKey }) {
   const [categories, setCategories] = useState([]);
   const [parties, setParties] = useState([]);
   const [showNewParty, setShowNewParty] = useState(false);
@@ -35,7 +35,7 @@ function AddTransaction({ onSuccess }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   const loadData = async () => {
     const [cats, partiesList] = await Promise.all([

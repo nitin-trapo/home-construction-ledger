@@ -6,7 +6,7 @@ import { compressImage } from '../utils/imageStorage';
 
 const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'UPI', 'Cheque'];
 
-function AddPayment({ onSuccess }) {
+function AddPayment({ onSuccess, refreshKey }) {
   const [parties, setParties] = useState([]);
   const [saving, setSaving] = useState(false);
   const [selectedParty, setSelectedParty] = useState(null);
@@ -26,7 +26,7 @@ function AddPayment({ onSuccess }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   const loadData = async () => {
     const partiesList = await getParties();

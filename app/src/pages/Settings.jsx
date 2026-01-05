@@ -3,7 +3,7 @@ import { Save, Download, Upload, Trash2, AlertCircle } from 'lucide-react';
 import { getSettings, updateSettings, exportData, importData, getTransactions, getParties } from '../utils/api';
 import { formatCurrencyFull } from '../utils/helpers';
 
-function SettingsPage({ onSettingsChange }) {
+function SettingsPage({ onSettingsChange, refreshKey }) {
   const [settings, setSettings] = useState({
     projectName: '',
     budget: 0
@@ -13,7 +13,7 @@ function SettingsPage({ onSettingsChange }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   const loadData = async () => {
     const [s, txns, partiesList] = await Promise.all([

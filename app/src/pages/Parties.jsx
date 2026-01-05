@@ -3,7 +3,7 @@ import { UserPlus, Phone, Trash2, ChevronRight, X, FileText, Edit2, ArrowUpDown,
 import { getParties, getTransactions, saveParty, deleteParty, updateParty, updatePartyBalance } from '../utils/api';
 import { formatCurrency, formatDateDisplay } from '../utils/helpers';
 
-function Parties({ onNavigate }) {
+function Parties({ onNavigate, refreshKey }) {
   const [parties, setParties] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -28,7 +28,7 @@ function Parties({ onNavigate }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   const loadData = async () => {
     const [partiesList, txns] = await Promise.all([

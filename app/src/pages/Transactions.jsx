@@ -3,7 +3,7 @@ import { Search, Filter, Download, Trash2, Edit2, ChevronDown, ChevronUp, X, Sav
 import { getTransactions, getCategories, getParties, deleteTransaction, updateTransaction, updatePartyBalance, getImage, deleteImage } from '../utils/api';
 import { formatCurrency, formatDateDisplay, filterTransactions, safeDate } from '../utils/helpers';
 
-function Transactions({ onNavigate }) {
+function Transactions({ onNavigate, refreshKey }) {
   const [transactions, setTransactions] = useState([]);
   const [filteredTxns, setFilteredTxns] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -31,7 +31,7 @@ function Transactions({ onNavigate }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     const filtered = filterTransactions(transactions, filters);

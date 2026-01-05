@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-function CompanyLedger({ onBack }) {
+function CompanyLedger({ onBack, refreshKey }) {
   const [transactions, setTransactions] = useState([]);
   const [parties, setParties] = useState([]);
   const [settings, setSettings] = useState({});
@@ -16,7 +16,7 @@ function CompanyLedger({ onBack }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     calculateLedger();

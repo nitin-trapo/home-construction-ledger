@@ -6,7 +6,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate, safeDate } from '../utils/helpers';
 
-function PartyLedger({ partyId, onBack }) {
+function PartyLedger({ partyId, onBack, refreshKey }) {
   const [party, setParty] = useState(null);
   const [ledgerEntries, setLedgerEntries] = useState([]);
 
@@ -14,7 +14,7 @@ function PartyLedger({ partyId, onBack }) {
     if (partyId) {
       loadData();
     }
-  }, [partyId]);
+  }, [partyId, refreshKey]);
 
   const loadData = async () => {
     const [parties, allTransactions] = await Promise.all([

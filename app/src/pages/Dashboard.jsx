@@ -6,7 +6,7 @@ import { formatCurrency, formatCurrencyFull, formatDateDisplay } from '../utils/
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
-function Dashboard({ onNavigate }) {
+function Dashboard({ onNavigate, refreshKey }) {
   const [stats, setStats] = useState(null);
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -14,7 +14,7 @@ function Dashboard({ onNavigate }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   const loadData = async () => {
     const [statsData, txns, cats, partiesList] = await Promise.all([
