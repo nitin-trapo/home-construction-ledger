@@ -40,8 +40,13 @@ function Reports({ onNavigate }) {
       const monthEnd = endOfMonth(month);
       
       const monthTxns = transactions.filter(t => {
-        const txnDate = parseISO(t.date);
-        return txnDate >= monthStart && txnDate <= monthEnd;
+        try {
+          const txnDate = parseISO(t.date);
+          return !isNaN(txnDate.getTime()) && txnDate >= monthStart && txnDate <= monthEnd;
+        } catch (error) {
+          console.warn('Invalid date in transaction:', t.date);
+          return false;
+        }
       });
 
       const spent = monthTxns.reduce((sum, t) => sum + (t.credit || 0), 0);

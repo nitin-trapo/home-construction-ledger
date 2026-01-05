@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Download, FileText, Filter } from 'lucide-react';
 import { getTransactions, getSettings, getParties } from '../utils/api';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, formatDate, safeDate } from '../utils/helpers';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -57,7 +57,7 @@ function CompanyLedger({ onBack }) {
     }
 
     // Sort by date
-    filteredTxns.sort((a, b) => new Date(a.date) - new Date(b.date));
+    filteredTxns.sort((a, b) => safeDate(a.date) - safeDate(b.date));
 
     // Calculate running balance (Cash Flow perspective)
     // Purchases = Money going out (negative)
@@ -94,7 +94,7 @@ function CompanyLedger({ onBack }) {
       [''],
       ['Date', 'Particulars', 'Party', 'Vch No', 'Type', 'Debit (₹)', 'Credit (₹)', 'Balance (₹)'],
       ...ledgerEntries.map(e => [
-        format(new Date(e.date), 'dd-MM-yyyy'),
+        formatDate(e.date),
         `"${e.description}"`,
         `"${e.partyName}"`,
         e.voucherNo,

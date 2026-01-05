@@ -4,6 +4,7 @@ import { getParties, getTransactions } from '../utils/api';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatDate, safeDate } from '../utils/helpers';
 
 function PartyLedger({ partyId, onBack }) {
   const [party, setParty] = useState(null);
@@ -60,7 +61,7 @@ function PartyLedger({ partyId, onBack }) {
       ['Date', 'Particulars', 'Vch Type', 'Vch No', 'Debit (₹)', 'Credit (₹)', 'Balance (₹)'],
       [`-`, `Opening Balance`, `-`, `-`, ``, ``, `${party.openingBalance || 0}`],
       ...ledgerEntries.map(e => [
-        format(new Date(e.date), 'dd-MM-yyyy'),
+        formatDate(e.date),
         `"${e.description}"`,
         e.type || 'Entry',
         e.voucherNo,
@@ -120,7 +121,7 @@ function PartyLedger({ partyId, onBack }) {
     const tableData = [
       ['-', 'Opening Balance B/F', '-', '-', '-', '-', `${Math.abs(openingBalance).toLocaleString('en-IN')} ${openingBalance < 0 ? 'Dr' : openingBalance > 0 ? 'Cr' : ''}`],
       ...ledgerEntries.map(e => [
-        format(new Date(e.date), 'dd-MM-yyyy'),
+        formatDate(e.date),
         e.description,
         e.type === 'purchase' ? 'Purchase' : e.type === 'payment' ? 'Payment' : 'Entry',
         e.voucherNo,

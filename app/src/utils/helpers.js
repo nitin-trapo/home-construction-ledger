@@ -28,15 +28,39 @@ export function formatCurrencyFull(amount) {
 // Format date
 export function formatDate(date) {
   if (!date) return '';
-  const d = typeof date === 'string' ? parseISO(date) : date;
-  return format(d, 'dd-MM-yyyy');
+  try {
+    const d = typeof date === 'string' ? parseISO(date) : date;
+    if (isNaN(d.getTime())) return '';
+    return format(d, 'dd-MM-yyyy');
+  } catch (error) {
+    console.warn('Invalid date format:', date);
+    return '';
+  }
 }
 
 // Format date for display
 export function formatDateDisplay(date) {
   if (!date) return '';
-  const d = typeof date === 'string' ? parseISO(date) : date;
-  return format(d, 'dd MMM yyyy');
+  try {
+    const d = typeof date === 'string' ? parseISO(date) : date;
+    if (isNaN(d.getTime())) return '';
+    return format(d, 'dd MMM yyyy');
+  } catch (error) {
+    console.warn('Invalid date format:', date);
+    return '';
+  }
+}
+
+// Safe date creation
+export function safeDate(date) {
+  if (!date) return new Date();
+  try {
+    const d = typeof date === 'string' ? parseISO(date) : new Date(date);
+    return isNaN(d.getTime()) ? new Date() : d;
+  } catch (error) {
+    console.warn('Invalid date:', date);
+    return new Date();
+  }
 }
 
 // Get today's date in YYYY-MM-DD format

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Download, Trash2, Edit2, ChevronDown, ChevronUp, X, Save, Paperclip, Image, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTransactions, getCategories, getParties, deleteTransaction, updateTransaction, updatePartyBalance, getImage, deleteImage } from '../utils/api';
-import { formatCurrency, formatDateDisplay, filterTransactions } from '../utils/helpers';
+import { formatCurrency, formatDateDisplay, filterTransactions, safeDate } from '../utils/helpers';
 
 function Transactions({ onNavigate }) {
   const [transactions, setTransactions] = useState([]);
@@ -47,8 +47,8 @@ function Transactions({ onNavigate }) {
       
       switch (sortConfig.key) {
         case 'date':
-          aVal = new Date(a.date);
-          bVal = new Date(b.date);
+          aVal = safeDate(a.date);
+          bVal = safeDate(b.date);
           break;
         case 'party':
           aVal = (a.partyName || '').toLowerCase();
